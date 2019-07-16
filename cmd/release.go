@@ -36,7 +36,7 @@ func NewRelease(c *config.Config) *cobra.Command {
 				log.Fatal(err)
 			}
 
-			changelog, err := getChangelog(git, c.ProjectID, releaseVersion)
+			changelog, err := getChangelog(git, c.GitLab.URL, c.ProjectID, releaseVersion)
 
 			if err != nil {
 				log.Fatal(err)
@@ -88,7 +88,7 @@ func getVersion(g *gitlab.Client, projectID string, releaseVersion string) (ver 
 	return semver.MustParse("0.0.0"), nil, errors.New("release version tag not found")
 }
 
-func getPreviousVersion(tags []*gitlab.Tag, releaseVersion semver.Version) (semver.Version, error) {
+func getPreviousVersion(tags []*gitlab.Tag, releaseVersion semver.Version) (ver semver.Version, tag *gitlab.Tag, err error) {
 	// find previous tag in the same major version
 	for _, tag := range tags {
 		tagVersion, err := semver.Make(version.Clean(tag.Name))
@@ -97,54 +97,52 @@ func getPreviousVersion(tags []*gitlab.Tag, releaseVersion semver.Version) (semv
 			continue
 		}
 
-		if tagVersion.GE(releaseVersion) || tagVersion.Major != releaseVersion.Major {
+		if tagVersion.GE(releaseVersion) || (releaseVersion.Minor != 0 && tagVersion.Major != releaseVersion.Major) {
 			continue
 		}
 
-		return tagVersion, nil
+		return tagVersion, tag, nil
 	}
 
-	return semver.MustParse("0.0.0"), errors.New("could not fetch previous version")
+	// TODO for first version
+
+	return semver.MustParse("0.0.0"), nil, errors.New("could not fetch previous version")
 }
 
-func getChangelog(g *gitlab.Client, projectID string, releaseVersion semver.Version) (string, error) {
+func getChangelog(g *gitlab.Client, gitlabURL string, projectID string, releaseVersion semver.Version) (string, error) {
 	tags, _, err := g.Tags.ListTags(projectID, nil)
 
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	previousVersion, err := getPreviousVersion(tags, releaseVersion)
+	_, previousVersionTag, err := getPreviousVersion(tags, releaseVersion)
 
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	var releaseVersionTagDate *time.Time
-	var previousVersionTagDate *time.Time
+	var releaseVersionTag *gitlab.Tag
 
 	for _, tag := range tags {
-		if version.Clean(tag.Name) == previousVersion.String() {
-			previousVersionTagDate = tag.Commit.CreatedAt
-		}
-
 		if version.Clean(tag.Name) == releaseVersion.String() {
-			releaseVersionTagDate = tag.Commit.CreatedAt
+			releaseVersionTag = tag
 		}
 	}
 
-	if releaseVersionTagDate == nil {
+	if releaseVersionTag == nil {
 		return "", errors.New("failed to fetch release version tag date")
 	}
 
-	if previousVersionTagDate == nil {
-		return "", errors.New("failed to fetch previous version tag date")
-	}
+	startTime := previousVersionTag.Commit.CommittedDate.Add(time.Second * -1)
+	endTime := releaseVersionTag.Commit.CommittedDate.Add(time.Second)
 
-	mrs, _, err := g.MergeRequests.ListMergeRequests(&gitlab.ListMergeRequestsOptions{
+	log.Println(startTime, endTime)
+
+	mrs, _, err := g.MergeRequests.ListProjectMergeRequests(projectID, &gitlab.ListProjectMergeRequestsOptions{
 		State:         gitlab.String("merged"),
-		CreatedAfter:  previousVersionTagDate,
-		CreatedBefore: releaseVersionTagDate,
+		UpdatedAfter:  &startTime,
+		UpdatedBefore: &endTime,
 	})
 
 	if err != nil {
@@ -154,11 +152,23 @@ func getChangelog(g *gitlab.Client, projectID string, releaseVersion semver.Vers
 	var changelog strings.Builder
 
 	changelog.WriteString(fmt.Sprintf("### Release notes for %s\n", releaseVersion))
-	changelog.WriteString("#### Merged Merge Requests\n")
 
-	for _, mr := range mrs {
-		changelog.WriteString(fmt.Sprintf("- %s [#%d](%s) ([%s](%s))\n", mr.Title, mr.ID, mr.WebURL, mr.Author.Username, mr.Author.WebURL))
+	if len(mrs) > 0 {
+		changelog.WriteString("#### Merged Merge Requests\n")
+
+		for _, mr := range mrs {
+			changelog.WriteString(fmt.Sprintf("- %s [#%d](%s) ([%s](%s))\n", mr.Title, mr.ID, mr.WebURL, mr.Author.Username, mr.Author.WebURL))
+		}
 	}
+
+	// TODO
+	//changelog.WriteString("#### Commits\n")
+
+	//for _, commit := range commits {
+	//	commitURL := fmt.Sprintf("%s/%s/commit/%s", gitlabURL, projectID, commit.ID)
+
+	//changelog.WriteString(fmt.Sprintf("- %s [[%s](%s)] (%s)\n", commit.Title, commit.ShortID, commitURL, commit.CommitterName))
+	//}
 
 	return changelog.String(), nil
 }
