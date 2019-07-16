@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"compress/flate"
+	"errors"
 	"fmt"
 	"github.com/mholt/archiver"
 	"github.com/spf13/cobra"
@@ -19,12 +20,14 @@ func NewRelease(c *config.Config) *cobra.Command {
 	releaseCmd := &cobra.Command{
 		Use: "release",
 		Run: func(cmd *cobra.Command, args []string) {
-			if !strings.HasPrefix(version, "v") {
-				version = fmt.Sprintf("v%s", version)
-			}
-
 			git := gitlab.NewClient(nil, c.GitLab.Token)
 			err := git.SetBaseURL(c.GitLab.URL)
+
+			if err != nil {
+				log.Fatal(err)
+			}
+
+			version, err := getVersion(git, c.ProjectID, version)
 
 			if err != nil {
 				log.Fatal(err)
@@ -35,14 +38,33 @@ func NewRelease(c *config.Config) *cobra.Command {
 			release := createRelease(git, c.ProjectID, version)
 			linkArchive(git, c.GitLab.URL, c.ProjectID, release.TagName, projectFile)
 
-			log.Println("Release created!")
+			log.Printf("Release %s created!", version)
 		},
 	}
 
-	releaseCmd.PersistentFlags().StringVar(&version, "version", "v1.0.0-dev", "version")
-	releaseCmd.PersistentFlags().StringVar(&version, "clean", "v1.0.0-dev", "version")
+	releaseCmd.PersistentFlags().StringVar(&version, "version", "", "version")
 
 	return releaseCmd
+}
+
+func getVersion(g *gitlab.Client, projectID string, version string) (string, error) {
+	tags, _, err := g.Tags.ListTags(projectID, nil)
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	if version == "" {
+		return tags[0].Name, nil
+	}
+
+	for _, tag := range tags {
+		if tag.Name == version {
+			return version, nil
+		}
+	}
+
+	return "", errors.New("tag not found")
 }
 
 func createArchive(files []string, version string) (path string) {

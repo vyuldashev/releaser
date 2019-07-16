@@ -11,7 +11,7 @@ var (
 )
 
 func Execute() {
-	c := config.Load("config.yml")
+	c := config.Load(".releaser.yml")
 
 	rootCmd := &cobra.Command{
 		Use: "releaser",
