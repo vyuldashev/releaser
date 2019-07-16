@@ -43,6 +43,8 @@ func NewRelease(c *config.Config) *cobra.Command {
 			}
 
 			path := createArchive(c.Files, releaseVersion)
+
+			// TODO if files are nil do not create and upload archive
 			projectFile := uploadArchive(git, c.ProjectID, path)
 			release := createRelease(git, c.ProjectID, releaseVersion, releaseTag, changelog)
 			linkArchive(git, c.GitLab.URL, c.ProjectID, release.TagName, projectFile)
@@ -136,8 +138,6 @@ func getChangelog(g *gitlab.Client, gitlabURL string, projectID string, releaseV
 
 	startTime := previousVersionTag.Commit.CommittedDate.Add(time.Second * -1)
 	endTime := releaseVersionTag.Commit.CommittedDate.Add(time.Second)
-
-	log.Println(startTime, endTime)
 
 	mrs, _, err := g.MergeRequests.ListProjectMergeRequests(projectID, &gitlab.ListProjectMergeRequestsOptions{
 		State:         gitlab.String("merged"),
