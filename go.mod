@@ -3,6 +3,7 @@ module github.com/vyuldashev/releaser
 go 1.12
 
 require (
+	github.com/blang/semver v3.5.1+incompatible
 	github.com/dsnet/compress v0.0.1 // indirect
 	github.com/golang/protobuf v1.3.2 // indirect
 	github.com/golang/snappy v0.0.1 // indirect
