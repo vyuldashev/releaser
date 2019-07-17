@@ -38,7 +38,5 @@ func Load(path string) *Config {
 		c.GitLab.Token = v
 	}
 
-	log.Fatal(c)
-
 	return &c
 }
