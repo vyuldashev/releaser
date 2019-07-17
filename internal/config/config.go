@@ -4,6 +4,7 @@ import (
 	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"log"
+	"os"
 )
 
 type Config struct {
@@ -32,6 +33,12 @@ func Load(path string) *Config {
 	if err != nil {
 		log.Fatal(err, "Failed to parse config file")
 	}
+
+	if v := os.Getenv("RELEASER_GITLAB_TOKEN"); v != "" {
+		c.GitLab.Token = v
+	}
+
+	log.Fatal(c)
 
 	return &c
 }
