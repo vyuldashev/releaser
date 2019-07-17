@@ -8,7 +8,7 @@ import (
 )
 
 type Config struct {
-	ProjectID string `yaml:"project_id"`
+	ProjectID string `yaml:"projectId"`
 
 	GitLab struct {
 		URL   string `yaml:"url"`

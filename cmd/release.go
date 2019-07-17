@@ -90,7 +90,7 @@ func getVersion(g *gitlab.Client, projectID string, releaseVersion string) (ver 
 	return semver.MustParse("0.0.0"), nil, errors.New("release version tag not found")
 }
 
-func getPreviousVersion(tags []*gitlab.Tag, releaseVersion semver.Version) (ver semver.Version, tag *gitlab.Tag, err error) {
+func getPreviousVersion(tags []*gitlab.Tag, releaseVersion semver.Version) (ver *semver.Version, tag *gitlab.Tag) {
 	// find previous tag in the same major version
 	for _, tag := range tags {
 		tagVersion, err := semver.Make(version.Clean(tag.Name))
@@ -103,12 +103,10 @@ func getPreviousVersion(tags []*gitlab.Tag, releaseVersion semver.Version) (ver 
 			continue
 		}
 
-		return tagVersion, tag, nil
+		return &tagVersion, tag
 	}
 
-	// TODO for first version
-
-	return semver.MustParse("0.0.0"), nil, errors.New("could not fetch previous version")
+	return nil, nil
 }
 
 func getChangelog(g *gitlab.Client, gitlabURL string, projectID string, releaseVersion semver.Version) (string, error) {
@@ -118,12 +116,7 @@ func getChangelog(g *gitlab.Client, gitlabURL string, projectID string, releaseV
 		log.Fatal(err)
 	}
 
-	_, previousVersionTag, err := getPreviousVersion(tags, releaseVersion)
-
-	if err != nil {
-		log.Fatal(err)
-	}
-
+	previousVersion, previousVersionTag := getPreviousVersion(tags, releaseVersion)
 	var releaseVersionTag *gitlab.Tag
 
 	for _, tag := range tags {
@@ -136,7 +129,12 @@ func getChangelog(g *gitlab.Client, gitlabURL string, projectID string, releaseV
 		return "", errors.New("failed to fetch release version tag date")
 	}
 
-	startTime := previousVersionTag.Commit.CommittedDate.Add(time.Second * -1)
+	var startTime time.Time
+
+	if previousVersion != nil {
+		startTime = previousVersionTag.Commit.CommittedDate.Add(time.Second * -1)
+	}
+
 	endTime := releaseVersionTag.Commit.CommittedDate.Add(time.Second)
 
 	mrs, _, err := g.MergeRequests.ListProjectMergeRequests(projectID, &gitlab.ListProjectMergeRequestsOptions{
